@@ -225,6 +225,15 @@ def backwarp(img, flow):
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # 动态附加时间戳到 checkpoint 的文件名中，避免多次训练互相覆盖
+    import time
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    ckpt_dir = os.path.dirname(args.ckpt)
+    ckpt_base = os.path.basename(args.ckpt)
+    name, ext = os.path.splitext(ckpt_base)
+    # 更新 args.ckpt 的路径为带有时间戳的路径
+    args.ckpt = os.path.join(ckpt_dir, f"{timestamp}_{name}{ext}")
+    
     # ==========================================
     # 1. 完全保留 train_lora.py 的数据读取方法
     # ==========================================
@@ -306,10 +315,9 @@ def train(args):
         
         # 4. 控制物理写盘逻辑：每 5 个 epoch，只要内存中积累了全新的最佳权重，才执行一次物理硬盘保存
         if (epoch + 1) % 5 == 0 and best_model_state is not None:
-            os.makedirs("../checkpoints", exist_ok=True)
-            ckpt_path = f"../checkpoints/block2_latest.pth"
-            torch.save(best_model_state, ckpt_path)
-            tqdm.write(f"✨ Epoch {epoch+1}: New best model saved to disk -> loss: {best_loss:.4f}")
+            os.makedirs(os.path.dirname(args.ckpt), exist_ok=True)
+            torch.save(best_model_state, args.ckpt)
+            tqdm.write(f"✨ Epoch {epoch+1}: New best model saved to disk -> {args.ckpt} (loss: {best_loss:.4f})")
             best_model_state = None # 落盘后清空待写标记
         
     logger.info(f"Training completed.\n")
