@@ -179,21 +179,30 @@ class block2CNN(nn.Module):
         
         return flow
 
+# 全局缓存字典：避免每批次在 GPU 上动态生成网格(极大地拖慢训练速度的核心元凶)
+_grid_cache = {}
+
 def backwarp(img, flow):
     """
     完全对标 Deep3D 中的 backwarp 过程，使用 grid_sampler 对图片进行重采样 (Warp)。
     """
     B, C, H, W = img.shape
+    device = img.device
+    dtype = img.dtype
     
-    # 构造标准网格 (Grid) - 采用高性能的 linspace + meshgrid
-    # 直接生成 PyTorch 要求的 [-1, 1] 归一化坐标系，省去后续大量的全局除法与减法运算
-    grid_y, grid_x = torch.meshgrid(
-        torch.linspace(-1.0, 1.0, H, dtype=img.dtype, device=img.device),
-        torch.linspace(-1.0, 1.0, W, dtype=img.dtype, device=img.device),
-        indexing='ij'
-    )
-    # 组合为 [H, W, 2] 后，扩展到当前 Batch 的大小: [B, H, W, 2]
-    grid = torch.stack((grid_x, grid_y), dim=-1).unsqueeze(0).expand(B, -1, -1, -1)
+    # 构造标准网格 (Grid) - 采用缓存机制避免极高的 CUDA 同步开销和内存分配
+    cache_key = (B, H, W, device, dtype)
+    if cache_key not in _grid_cache:
+        grid_y, grid_x = torch.meshgrid(
+            torch.linspace(-1.0, 1.0, H, dtype=dtype, device=device),
+            torch.linspace(-1.0, 1.0, W, dtype=dtype, device=device),
+            indexing='ij'
+        )
+        # 组合为 [H, W, 2] 后，扩展到当前 Batch 的大小: [B, H, W, 2]
+        grid = torch.stack((grid_x, grid_y), dim=-1).unsqueeze(0).expand(B, -1, -1, -1)
+        _grid_cache[cache_key] = grid
+        
+    grid = _grid_cache[cache_key]
     
     # 将预测的光流通道放到最后: [B, 2, H, W] -> [B, H, W, 2]
     flow = flow.permute(0, 2, 3, 1)
