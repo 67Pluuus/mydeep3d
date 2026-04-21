@@ -146,9 +146,9 @@ def main():
     
     if os.path.exists(args.ckpt):
         model.load_state_dict(torch.load(args.ckpt, map_location=device))
-        logger.info(f"成功加载权重: {args.ckpt}")
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 成功加载权重: {args.ckpt}", flush=True)
     else:
-        logger.warning(f"由于 {args.ckpt} 未找到，将使用随机初始化权重跑测试线!")
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 警告: 由于 {args.ckpt} 未找到，将使用随机初始化权重跑测试线!", flush=True)
 
     output_root = Path(args.output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -258,7 +258,7 @@ def main():
             msg = (f"Subset: {subset:12s} | Count: {c:4d} | PSNR: {subset_metrics['psnr']/c:6.4f} | "
                    f"SSIM: {subset_metrics['ssim']/c:6.4f} | SIoU: {subset_metrics['siou']/c:6.4f} | "
                    f"FPS: {subset_fps:6.2f}")
-            logger.info(msg)
+            print(msg, flush=True) # 使用 print 并加上 flush 保证缓冲被吐出
             with open(log_file_path, 'a') as f:
                 f.write(msg + "\n")
                 
@@ -279,7 +279,7 @@ def main():
         msg = (f"\n{'='*80}\nOverall Average | Count: {c:4d} | SIoU: {total_metrics['siou']/c:6.4f} | "
                f"SSIM: {total_metrics['ssim']/c:6.4f} | PSNR: {total_metrics['psnr']/c:6.4f} |"
                f"FPS: {overall_fps:6.2f}")
-        logger.info(msg)
+        print(msg, flush=True)
 
 if __name__ == '__main__':
     main()
