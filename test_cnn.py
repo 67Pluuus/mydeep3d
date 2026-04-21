@@ -135,6 +135,7 @@ def main():
     parser.add_argument("--output_dir", type=str, default="../SP_Data/test_results_cnn", help="预测输出目录")
     parser.add_argument("--max_samples", type=int, default=None, help="最大测试数量 (调试用)")
     parser.add_argument("--device", type=str, default="cuda:0", help="设备")
+    parser.add_argument("--subsets", type=str, nargs='+', default=None, help="指定要测试的类别 (子文件夹)，例如: animation indoor")
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -158,6 +159,8 @@ def main():
     subsets = [d for d in os.listdir(args.test_data) if os.path.isdir(os.path.join(args.test_data, d))]
     data_subsets = []
     for s in subsets:
+        if args.subsets and s not in args.subsets:
+            continue
         if os.path.exists(os.path.join(args.test_data, s, 'left')) and os.path.exists(os.path.join(args.test_data, s, 'right')):
             data_subsets.append(s)
     data_subsets.sort()
@@ -200,21 +203,17 @@ def main():
                     
             # 图像加载与对其处理
             with Image.open(img_path) as pil_left, Image.open(right_img_path) as pil_right:
-                # 1. 先把输入图片上采样/处理到 1280*800 作为评测基准
-                eval_size = (1280, 800)  # (width, height)
-                gt_left_eval = convert_crop_and_resize(pil_left, eval_size)
-                gt_right_eval = convert_crop_and_resize(pil_right, eval_size)
-                
-                # 2. 再 reset 到 1280*720 准备输入给模型
-                model_input_size = (1280, 720)
-                left_input_pil = convert_crop_and_resize(gt_left_eval, model_input_size)
+                # 彻底抛弃 1280x800 的畸变过度，严格统一到物理对应的模型尺寸！
+                target_size = (1280, 720)  # (width, height)
+                left_pil_eval = convert_crop_and_resize(pil_left, target_size)
+                right_pil_eval = convert_crop_and_resize(pil_right, target_size)
             
-            # 用于最终指标计算的基准图始终保持 1280x800
-            np_left = np.array(gt_left_eval)
-            np_right = np.array(gt_right_eval)
+            # 用于最终指标计算的基准图 (1280x720)
+            np_left = np.array(left_pil_eval)
+            np_right = np.array(right_pil_eval)
             
             # 转Tensor 并缩放到 [-1, 1]，进入网络尺寸为 1280x720
-            left_tf = pixel_tf(left_input_pil).unsqueeze(0).to(device)
+            left_tf = pixel_tf(left_pil_eval).unsqueeze(0).to(device)
             left_tf = (left_tf * 2.0) - 1.0
             
             torch.cuda.synchronize()
@@ -235,11 +234,8 @@ def main():
             torch.cuda.synchronize()
             infer_time = time.perf_counter() - start_time
 
-            # 3. 将模型输出的 1280x720 的右图通过插值拉大到 1280x800 进行指标计算
-            pred_right_tf = torch.nn.functional.interpolate(
-                pred_right_tf, size=(800, 1280), mode='bilinear', align_corners=False
-            )
-
+            # 不做任何拉伸！！！原汁原味的 1280x720 进行指标对抗！
+            
             # 解析为 uint8 numpy 进行指标计算 (-1~1 -> 0~255)
             pred_right_tf = (pred_right_tf + 1.0) / 2.0
             pred_np = pred_right_tf.squeeze(0).permute(1, 2, 0).cpu().numpy()

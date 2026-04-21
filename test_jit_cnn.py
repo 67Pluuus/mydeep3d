@@ -165,19 +165,15 @@ def main():
             right_img_path = candidates[0]
                     
             with Image.open(img_path) as pil_left, Image.open(right_img_path) as pil_right:
-                # 1. 基准评测面依然保持你的 1280x800
-                eval_size = (1280, 800)
-                gt_left_eval = convert_crop_and_resize(pil_left, eval_size)
-                gt_right_eval = convert_crop_and_resize(pil_right, eval_size)
-                
-                # 2. 但是送给 JIT 模型前，必须硬性贴合 JIT 编译时“凝固”好的死分辨率尺码！
-                model_input_size = (1280, 720) 
-                left_input_pil = convert_crop_and_resize(gt_left_eval, model_input_size)
+                # 严密贴合 JIT 编译时“凝固”好的死分辨率尺码！不做畸变拉伸评测！
+                target_size = (1280, 720) 
+                left_pil_eval = convert_crop_and_resize(pil_left, target_size)
+                right_pil_eval = convert_crop_and_resize(pil_right, target_size)
             
-            np_left = np.array(gt_left_eval)
-            np_right = np.array(gt_right_eval)
+            np_left = np.array(left_pil_eval)
+            np_right = np.array(right_pil_eval)
             
-            left_tf = pixel_tf(left_input_pil).unsqueeze(0).to(device)
+            left_tf = pixel_tf(left_pil_eval).unsqueeze(0).to(device)
             left_tf = (left_tf * 2.0) - 1.0
             
             # 【修复点】：在这里加入了一个强制的 CUDA 同步并预热 GPU
@@ -202,11 +198,7 @@ def main():
             torch.cuda.synchronize()
             infer_time = time.perf_counter() - start_time
 
-            # 3. 将 1280x720 模型输出的右图通过插值拉大到 1280x800 进行指标计算
-            pred_right_tf = torch.nn.functional.interpolate(
-                pred_right_tf, size=(800, 1280), mode='bilinear', align_corners=False
-            )
-
+            # 屏蔽神经病式重采样拉伸，保护高频细节！
             pred_right_tf = (pred_right_tf + 1.0) / 2.0
             pred_np = pred_right_tf.squeeze(0).permute(1, 2, 0).cpu().numpy()
             pred_np = (pred_np * 255).clip(0, 255).astype(np.uint8)

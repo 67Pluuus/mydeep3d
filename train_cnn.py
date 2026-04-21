@@ -225,15 +225,6 @@ def backwarp(img, flow):
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 动态附加时间戳到 checkpoint 的文件名中，避免多次训练互相覆盖
-    import time
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    ckpt_dir = os.path.dirname(args.ckpt)
-    ckpt_base = os.path.basename(args.ckpt)
-    name, ext = os.path.splitext(ckpt_base)
-    # 更新 args.ckpt 的路径为带有时间戳的路径
-    args.ckpt = os.path.join(ckpt_dir, f"{timestamp}_{name}{ext}")
-    
     # ==========================================
     # 1. 完全保留 train_lora.py 的数据读取方法
     # ==========================================
@@ -313,23 +304,36 @@ def train(args):
         # 实时显示当批次指标，此时 best 分数在每一轮都会立马反应最新战绩
         pbar.set_postfix({"avg_mae": f"{avg_loss:.4f}", "best": f"{best_loss if best_loss != float('inf') else 0:.4f}"})
         
-        # 4. 控制物理写盘逻辑：每 5 个 epoch，只要内存中积累了全新的最佳权重，才执行一次物理硬盘保存
-        if (epoch + 1) % 5 == 0 and best_model_state is not None:
-            os.makedirs(os.path.dirname(args.ckpt), exist_ok=True)
-            torch.save(best_model_state, args.ckpt)
-            tqdm.write(f"✨ Epoch {epoch+1}: New best model saved to disk -> {args.ckpt} (loss: {best_loss:.4f})")
-            best_model_state = None # 落盘后清空待写标记
-        
+        # 4. 控制物理写盘逻辑：根据 save_freq 保存当前最佳模型
+        should_save = False
+        if args.save_freq == -1:
+            if (epoch + 1) == args.epochs:
+                should_save = True
+        elif args.save_freq > 0:
+            if (epoch + 1) % args.save_freq == 0 or (epoch + 1) == args.epochs:
+                should_save = True
+                
+        if should_save:
+            os.makedirs(args.ckpt_dir, exist_ok=True)
+            ckpt_path = os.path.join(args.ckpt_dir, f"epoch_{epoch+1}.pth")
+            
+            # 如果目前还没有跑出最好结果，就只存当前模型的 state_dict
+            state_to_save = best_model_state if best_model_state is not None else model.state_dict()
+            torch.save(state_to_save, ckpt_path)
+            
+            tqdm.write(f"✨ Epoch {epoch+1}: Current best model saved to disk -> {ckpt_path} (loss: {best_loss:.4f})")
+            
     logger.info(f"Training completed.\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Lightweight CNN Training based on block2 structure")
     parser.add_argument("--train_dir", type=str, default="../SP_Data/mono_train", help="Path to mono dataset (contains 'left' and 'right' folders)")
-    parser.add_argument("--ckpt", type=str, default="../checkpoints/block2_latest.pth", help="Model checkpoint path to save")
+    parser.add_argument("--ckpt_dir", type=str, default="../checkpoints/default_run", help="Model checkpoint directory to save per 50 epochs")
     parser.add_argument("--img_width", type=int, default=1280, help="Input image width")
     parser.add_argument("--height", type=int, default=720, help="Input image height")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
+    parser.add_argument("--save_freq", type=int, default=-1, help="Save best model every N epochs. -1 means save only at the end.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--num_frames", type=int, default=1, help="Frames to load per sequence to simulate standard 2D CNN training")
     args = parser.parse_args()
