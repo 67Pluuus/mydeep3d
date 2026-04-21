@@ -224,18 +224,17 @@ def main():
                 else:
                     continue
                     
-            # 图像加载与对其处理
+            # 图像加载与对齐处理：参考 Mono2Stereo 强行暴力拉伸到 1280x800
+            new_size = (1280, 800)
             with Image.open(img_path) as pil_left, Image.open(right_img_path) as pil_right:
-                # 彻底抛弃 1280x800 的畸变过度，严格统一到物理对应的模型尺寸！
-                target_size = (1280, 720)  # (width, height)
-                left_pil_eval = convert_crop_and_resize(pil_left, target_size)
-                right_pil_eval = convert_crop_and_resize(pil_right, target_size)
+                left_pil_eval = pil_left.convert("RGB").resize(new_size, Image.Resampling.LANCZOS)
+                right_pil_eval = pil_right.convert("RGB").resize(new_size, Image.Resampling.LANCZOS)
             
-            # 用于最终指标计算的基准图 (1280x720)
+            # 用于最终指标计算的基准图 (1280x800)
             np_left = np.array(left_pil_eval)
             np_right = np.array(right_pil_eval)
             
-            # 转Tensor 并缩放到 [-1, 1]，进入网络尺寸为 1280x720
+            # 转Tensor 并缩放到 [-1, 1]，进入网络尺寸为 1280x800
             left_tf = pixel_tf(left_pil_eval).unsqueeze(0).to(device)
             left_tf = (left_tf * 2.0) - 1.0
             
@@ -249,7 +248,7 @@ def main():
             
             # ----- 核心推理环节 -----
             with torch.no_grad():
-                # 输入 1280x720，内部下采样一半变成 640x360 推理，流输出 1280x720
+                # 输入 1280x800，内部网络适应该尺寸计算，输出预测右图
                 flow_pred = model(left_tf)
                 pred_right_tf = backwarp(left_tf, flow_pred)
             # ------------------------
@@ -257,7 +256,7 @@ def main():
             torch.cuda.synchronize()
             infer_time = time.perf_counter() - start_time
 
-            # 不做任何拉伸！！！原汁原味的 1280x720 进行指标对抗！
+            # 完全模拟原代码在 1280x800 的拉近状态进行打分！
             
             # 解析为 uint8 numpy 进行指标计算 (-1~1 -> 0~255)
             pred_right_tf = (pred_right_tf + 1.0) / 2.0
@@ -279,7 +278,7 @@ def main():
             c = subset_metrics['count']
             subset_fps = c / subset_metrics['infer_time']
             msg = (f"Subset: {subset:12s} | Count: {c:4d} | SIoU: {subset_metrics['siou']/c:6.4f} | "
-                   f"SSIM: {subset_metrics['ssim']/c:6.4f} | PSNR: {subset_metrics['psnr']/c:6.4f} |"
+                   f"PSNR: {subset_metrics['psnr']/c:6.4f} | SSIM: {subset_metrics['ssim']/c:6.4f} | "
                    f"FPS: {subset_fps:6.2f}")
             print(msg, flush=True) # 使用 print 并加上 flush 保证缓冲被吐出
             log_to_file(msg)
@@ -303,7 +302,7 @@ def main():
         overall_fps = c / total_metrics['infer_time']
         msg_header = f"\n{'='*80}\n"
         msg_body = (f"Overall Average | Count: {c:4d} | SIoU: {total_metrics['siou']/c:6.4f} | "
-               f"SSIM: {total_metrics['ssim']/c:6.4f} | PSNR: {total_metrics['psnr']/c:6.4f} |"
+               f"PSNR: {total_metrics['psnr']/c:6.4f} | SSIM: {total_metrics['ssim']/c:6.4f} | "
                f"FPS: {overall_fps:6.2f}")
         print(msg_header + msg_body, flush=True)
         log_to_file(msg_header + msg_body)
