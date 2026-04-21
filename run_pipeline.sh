@@ -65,7 +65,7 @@ for pth_file in "${CKPT_DIR}"/epoch_*.pth; do
             --ckpt "$pth_file" \
             --subsets "${TEST_SUBSETS[@]}" \
             --test_data ../SP_Data/mono2stereo-test \
-            --output_dir "../SP_Data/test_results_cnn_${TIMESTAMP}_eval" > "${log_file}" 2>&1
+            --output_dir "../SP_Data/test_results_cnn_${TIMESTAMP}_eval" > "${log_file}"
             
         echo ">>>>>>>> 模型 ${filename} 测试完成！ <<<<<<<<"
     fi

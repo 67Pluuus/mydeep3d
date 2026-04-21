@@ -23,7 +23,7 @@ except ImportError:
 # 引入我们刚才在 train_cnn.py 中定义的模型体系和 Warp 函数
 from train_cnn import block2CNN, backwarp
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------------------
