@@ -260,6 +260,14 @@ def train(args):
     best_loss = float('inf')
     best_model_state = None
     
+    if args.epochs == 0:
+        logger.info("Epochs set to 0, saving initial random weights directly for baseline testing.")
+        os.makedirs(args.ckpt_dir, exist_ok=True)
+        ckpt_path = os.path.join(args.ckpt_dir, "epoch_0.pth")
+        torch.save(model.state_dict(), ckpt_path)
+        logger.info(f"Baseline model saved to: {ckpt_path}\n")
+        return
+        
     # 将进度条提起到最外层，只按 Epoch 更新，不显示多余冗杂信息
     pbar = tqdm(range(args.epochs), desc="Training Process")
     
