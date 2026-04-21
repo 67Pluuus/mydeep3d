@@ -7,6 +7,12 @@
 # 1. 生成时间戳，格式例如 20260421_153000
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
+# ==========================================
+# 自动创建基础大盘目录 (以防整个工程刚刚 Clone 下来)
+# ==========================================
+mkdir -p ../checkpoints
+mkdir -p ../results
+
 # 2. 根据时间戳创建唯一的目标文件夹，用于存放这批跑出来的模型参数
 CKPT_DIR="../checkpoints/${TIMESTAMP}"
 mkdir -p "${CKPT_DIR}"
@@ -16,7 +22,7 @@ RESULTS_DIR="../results/${TIMESTAMP}"
 mkdir -p "${RESULTS_DIR}"
 
 # 训练配置：总轮数、保存频率、学习率
-EPOCHS=200
+EPOCHS=500   # 总训练轮数
 SAVE_FREQ=50 # 填 -1 则只在最后一个 epoch 保存
 LR=1e-4      # 学习率
 

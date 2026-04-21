@@ -19,17 +19,15 @@ from PIL import Image
 class StereoVideoDataset(Dataset):
     """
     Stereo video dataset for training with robust error handling.
-    Loads left/right image pairs and returns N-frame sequences.
+    Loads left/right image pairs individually (num_frames removed to allow PyTorch DataLoader to batch in parallel).
     """
     def __init__(
         self,
         root_dir: str,
-        num_frames: int = 81,
         image_size: tuple = (1280, 720), # (width, height) - 默认 1280x720 以便对齐部署
         extensions: tuple = ('.jpg', '.jpeg', '.png', '.bmp'),
     ):
         self.root_dir = Path(root_dir)
-        self.num_frames = num_frames
         self.image_size = image_size
         self.extensions = extensions
         
@@ -45,11 +43,11 @@ class StereoVideoDataset(Dataset):
         self.right_images = self._find_images(self.right_dir)
         self._validate_image_pairs()
         
-        self.num_sequences = len(self.left_images) // self.num_frames
-        if self.num_sequences == 0:
-            raise ValueError(f"Found {len(self.left_images)} images, need at least {num_frames}.")
+        self.num_pairs = len(self.left_images)
+        if self.num_pairs == 0:
+            raise ValueError(f"Found {len(self.left_images)} images, need at least 1.")
         
-        logger.info(f"Dataset initialized: {self.num_sequences} sequences")
+        logger.info(f"Dataset initialized: {self.num_pairs} image pairs")
     
     def _find_images(self, directory: Path) -> list:
         images = []
@@ -73,41 +71,33 @@ class StereoVideoDataset(Dataset):
         self.right_images = self.right_images[:min_len]
     
     def __len__(self) -> int:
-        return self.num_sequences
+        return self.num_pairs
     
     def __getitem__(self, idx: int) -> dict:
-        start_idx = idx * self.num_frames
-        if start_idx + self.num_frames > len(self.left_images):
-            start_idx = len(self.left_images) - self.num_frames
-            
         target_h, target_w = self.image_size[1], self.image_size[0]
         resize_transform = transforms.Resize((target_h, target_w),
             interpolation=transforms.InterpolationMode.BILINEAR, antialias=True)
             
-        left_frames, right_frames = [], []
-        
-        for i in range(self.num_frames):
-            try:
-                left_img = Image.open(self.left_images[start_idx + i]).convert('RGB')
-                right_img = Image.open(self.right_images[start_idx + i]).convert('RGB')
-                
-                left_tensor = transforms.ToTensor()(resize_transform(left_img))
-                right_tensor = transforms.ToTensor()(resize_transform(right_img))
-                
-                # Normalize to [-1, 1]
-                left_tensor = (left_tensor * 2.0) - 1.0
-                right_tensor = (right_tensor * 2.0) - 1.0
-                
-                left_frames.append(left_tensor)
-                right_frames.append(right_tensor)
-            except Exception as e:
-                dummy = torch.zeros(3, target_h, target_w)
-                left_frames.append(dummy.clone())
-                right_frames.append(dummy.clone())
-                
+        try:
+            left_img = Image.open(self.left_images[idx]).convert('RGB')
+            right_img = Image.open(self.right_images[idx]).convert('RGB')
+            
+            left_tensor = transforms.ToTensor()(resize_transform(left_img))
+            right_tensor = transforms.ToTensor()(resize_transform(right_img))
+            
+            # Normalize to [-1, 1]
+            left_tensor = (left_tensor * 2.0) - 1.0
+            right_tensor = (right_tensor * 2.0) - 1.0
+            
+        except Exception as e:
+            # Fallback for corrupted images
+            dummy = torch.zeros(3, target_h, target_w)
+            left_tensor = dummy.clone()
+            right_tensor = dummy.clone()
+            
         return {
-            "left": torch.stack(left_frames),
-            "right": torch.stack(right_frames)
+            "left": left_tensor,
+            "right": right_tensor
         }
 
 class block2CNN(nn.Module):
@@ -231,7 +221,6 @@ def train(args):
     logger.info(f"Loading dataset from {args.train_dir}...")
     dataset = StereoVideoDataset(
         root_dir=args.train_dir,
-        num_frames=args.num_frames,
         image_size=(args.img_width, args.height) # 不写死尺寸，按外部传入处理
     )
     
@@ -270,10 +259,8 @@ def train(args):
         epoch_loss = 0.0
         
         for batch in dataloader:
-            # 数据打平：[B, T, C, H, W] -> [B*T, C, H, W]
-            b, t, c, h, w = batch['left'].shape
-            left_img = batch['left'].view(b * t, c, h, w).to(device)
-            right_img = batch['right'].view(b * t, c, h, w).to(device)
+            left_img = batch['left'].to(device)
+            right_img = batch['right'].to(device)
             
             optimizer.zero_grad()
             
