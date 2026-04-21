@@ -60,12 +60,13 @@ for pth_file in "${CKPT_DIR}"/epoch_*.pth; do
         echo ">>>>>>>> 测试日志正写入: ${log_file} <<<<<<<<"
         
         # 将挑选出的子类变量传入 python 测试脚本
-        # 抛弃屏幕 print，将标准输出和错误输出都合并写入对应的 .log 文件
+        # 这里由 test_cnn.py 内部处理写入逻辑，外部不再进行粗暴重定向，确保进度条在屏幕健康显示
         python test_cnn.py \
             --ckpt "$pth_file" \
             --subsets "${TEST_SUBSETS[@]}" \
             --test_data ../SP_Data/mono2stereo-test \
-            --output_dir "../SP_Data/test_results_cnn_${TIMESTAMP}_eval" > "${log_file}"
+            --log_file "${log_file}" \
+            --output_dir "../SP_Data/test_results_cnn_${TIMESTAMP}_eval"
             
         echo ">>>>>>>> 模型 ${filename} 测试完成！ <<<<<<<<"
     fi

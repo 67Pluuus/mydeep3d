@@ -136,6 +136,7 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None, help="最大测试数量 (调试用)")
     parser.add_argument("--device", type=str, default="cuda:0", help="设备")
     parser.add_argument("--subsets", type=str, nargs='+', default=None, help="指定要测试的类别 (子文件夹)，例如: animation indoor")
+    parser.add_argument("--log_file", type=str, default=None, help="独立日志文件位置")
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -144,11 +145,21 @@ def main():
     model = block2CNN().to(device)
     model.eval()
     
+    # 一个辅助的文件写入器
+    def log_to_file(msg):
+        if args.log_file:
+            with open(args.log_file, 'a', encoding='utf-8') as f:
+                f.write(msg + "\n")
+    
     if os.path.exists(args.ckpt):
         model.load_state_dict(torch.load(args.ckpt, map_location=device))
-        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 成功加载权重: {args.ckpt}", flush=True)
+        msg = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 成功加载权重: {args.ckpt}"
+        print(msg, flush=True)
+        log_to_file(msg)
     else:
-        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 警告: 由于 {args.ckpt} 未找到，将使用随机初始化权重跑测试线!", flush=True)
+        msg = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - 警告: 由于 {args.ckpt} 未找到，将使用随机初始化权重跑测试线!"
+        print(msg, flush=True)
+        log_to_file(msg)
 
     output_root = Path(args.output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -259,7 +270,9 @@ def main():
                    f"SSIM: {subset_metrics['ssim']/c:6.4f} | SIoU: {subset_metrics['siou']/c:6.4f} | "
                    f"FPS: {subset_fps:6.2f}")
             print(msg, flush=True) # 使用 print 并加上 flush 保证缓冲被吐出
-            with open(log_file_path, 'a') as f:
+            log_to_file(msg)
+            
+            with open(log_file_path, 'a', encoding='utf-8') as f:
                 f.write(msg + "\n")
                 
             subset_results[subset] = {
@@ -276,10 +289,12 @@ def main():
     if total_metrics['count'] > 0:
         c = total_metrics['count']
         overall_fps = c / total_metrics['infer_time']
-        msg = (f"\n{'='*80}\nOverall Average | Count: {c:4d} | SIoU: {total_metrics['siou']/c:6.4f} | "
+        msg_header = f"\n{'='*80}\n"
+        msg_body = (f"Overall Average | Count: {c:4d} | SIoU: {total_metrics['siou']/c:6.4f} | "
                f"SSIM: {total_metrics['ssim']/c:6.4f} | PSNR: {total_metrics['psnr']/c:6.4f} |"
                f"FPS: {overall_fps:6.2f}")
-        print(msg, flush=True)
+        print(msg_header + msg_body, flush=True)
+        log_to_file(msg_header + msg_body)
 
 if __name__ == '__main__':
     main()
