@@ -221,7 +221,19 @@ def backwarp(img, flow):
     return output
 
 
+def set_seed(seed=42):
+    """固定所有随机数种子，确保每次随机初始化权重一致"""
+    import random
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
 def train(args):
+    # 先在入口处固定好随机种子，防止完全随机
+    set_seed(42)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # ==========================================

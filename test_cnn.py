@@ -128,6 +128,15 @@ def convert_crop_and_resize(pil_img, width_and_height):
 # ------------------------------------------------------------------------------
 # 主求指标测试例程
 # ------------------------------------------------------------------------------
+def set_seed(seed=42):
+    """固定所有随机数种子，确保每次随机初始化权重一致"""
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        
 def main():
     parser = argparse.ArgumentParser(description="Evaluate Custom CNN Model")
     parser.add_argument("--ckpt", type=str, default="../checkpoints/block2_latest.pth", help="训练好的核心块网络权重路径")
@@ -138,6 +147,9 @@ def main():
     parser.add_argument("--subsets", type=str, nargs='+', default=None, help="指定要测试的类别 (子文件夹)，例如: animation indoor")
     parser.add_argument("--log_file", type=str, default=None, help="独立日志文件位置")
     args = parser.parse_args()
+
+    # 固定随机数种子，保证测试的偶然性消失，无论怎么测起点一样
+    set_seed(42)
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     
