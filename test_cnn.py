@@ -266,8 +266,8 @@ def main():
         if subset_metrics['count'] > 0:
             c = subset_metrics['count']
             subset_fps = c / subset_metrics['infer_time']
-            msg = (f"Subset: {subset:12s} | Count: {c:4d} | PSNR: {subset_metrics['psnr']/c:6.4f} | "
-                   f"SSIM: {subset_metrics['ssim']/c:6.4f} | SIoU: {subset_metrics['siou']/c:6.4f} | "
+            msg = (f"Subset: {subset:12s} | Count: {c:4d} | SIoU: {subset_metrics['siou']/c:6.4f} | "
+                   f"SSIM: {subset_metrics['ssim']/c:6.4f} | PSNR: {subset_metrics['psnr']/c:6.4f} |"
                    f"FPS: {subset_fps:6.2f}")
             print(msg, flush=True) # 使用 print 并加上 flush 保证缓冲被吐出
             log_to_file(msg)
